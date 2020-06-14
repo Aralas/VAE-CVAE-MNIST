@@ -19,7 +19,8 @@ def main(args):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(args.seed)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda")
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
     ts = time.time()
 
@@ -109,7 +110,7 @@ def main(args):
 
         df = pd.DataFrame.from_dict(tracker_epoch, orient='index')
         g = sns.lmplot(
-            x='x', y='y', hue='label', data=df.groupby('label').head(100),
+            x='x', y='y', hue='label', data=df.groupby('label').head(200),
             fit_reg=False, legend=True)
         g.savefig(os.path.join(
             args.fig_root, str(ts), "E{:d}-Dist.png".format(epoch)),
@@ -120,11 +121,12 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--noise_level", type=float, default=0.3)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--learning_rate", type=float, default=0.001)
-    parser.add_argument("--encoder_layer_sizes", type=list, default=[784, 256])
-    parser.add_argument("--decoder_layer_sizes", type=list, default=[256, 784])
+    parser.add_argument("--encoder_layer_sizes", type=list, default=[784, 400, 200, 100])
+    parser.add_argument("--decoder_layer_sizes", type=list, default=[100, 200, 400, 784])
     parser.add_argument("--latent_size", type=int, default=2)
     parser.add_argument("--print_every", type=int, default=100)
     parser.add_argument("--fig_root", type=str, default='figs')
