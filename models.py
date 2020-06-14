@@ -24,9 +24,10 @@ class VAE(nn.Module):
             encoder_layer_sizes, latent_size, conditional, num_labels)
         self.decoder = Decoder(
             decoder_layer_sizes, latent_size, conditional, num_labels)
-
+        self.device = torch.device("cuda")
+        
     def forward(self, x, c=None):
-
+        
         if x.dim() > 2:
             x = x.view(-1, 28*28)
 
@@ -34,8 +35,8 @@ class VAE(nn.Module):
 
         means, log_var = self.encoder(x, c)
 
-        std = torch.exp(0.5 * log_var)
-        eps = torch.randn([batch_size, self.latent_size])
+        std = torch.exp(0.5 * log_var).to(self.device)
+        eps = torch.randn([batch_size, self.latent_size]).to(self.device)
         z = eps * std + means
 
         recon_x = self.decoder(z, c)
@@ -45,7 +46,7 @@ class VAE(nn.Module):
     def inference(self, n=1, c=None):
 
         batch_size = n
-        z = torch.randn([batch_size, self.latent_size])
+        z = torch.randn([batch_size, self.latent_size]).to(self.device)
 
         recon_x = self.decoder(z, c)
 

@@ -1,5 +1,6 @@
 import torch
-
+import numpy as np
+from scipy.spatial.distance import cdist
 
 def idx2onehot(idx, n):
 
@@ -11,3 +12,58 @@ def idx2onehot(idx, n):
     onehot.scatter_(1, idx, 1)
 
     return onehot
+
+def add_noise(loader, clean_index, noise_level, noise_sigma, clean_ratio, seed):
+    
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    
+    images = [sample_i for sample_i in loader.sampler.data_source.train_data]
+    probs_to_change = torch.rand((len(images),))
+    idx_to_change = probs_to_change >= (1 - noise_level)
+    n_rows, n_cols = images[0].shape
+    for n, image_i in enumerate(images):
+        if idx_to_change[n] == 1 and n not in clean_index:
+            noise = torch.randn((n_rows, n_cols), out=None) * noise_sigma           
+            images[n] += noise.byte()
+
+    loader.sampler.data_source.train_data = images
+    return idx_to_change
+
+    
+def get_lid(loader, clean_index, vae, latent_size, seed):
+    
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    device = torch.device("cuda")
+    
+    k = 20
+    clean_latent_n = 5
+    feature_n = 10
+    
+    images = [sample_i for sample_i in loader.sampler.data_source.train_data]
+    clean_latent = np.zeros((len(clean_index)*clean_latent_n, latent_size))
+    whole_latent = np.zeros((len(images)*feature_n, latent_size))
+    lid_features = np.zeros((len(images), feature_n))
+    
+    for n, index in enumerate(clean_index):
+        means, log_var = vae.encoder(images[index].flatten().float().to(device))
+        std = torch.exp(0.5 * log_var).detach().cpu().numpy()                
+        eps = torch.randn([clean_latent_n, latent_size]).detach().cpu().numpy()
+        z = eps * std + means.detach().cpu().numpy()
+        clean_latent[n*clean_latent_n:(n+1)*clean_latent_n, :] = z
+    
+    f = lambda v: - k / np.sum(np.log(max(v, 1e-6)/v[-1]))
+    for n, image_i in enumerate(images):
+        means, log_var = vae.encoder(image_i.flatten().float().to(device))
+        std = torch.exp(0.5 * log_var).detach().cpu().numpy()        
+        eps = torch.randn([feature_n, latent_size]).detach().cpu().numpy()
+        z = eps * std + means.detach().cpu().numpy()
+        whole_latent[n*feature_n:(n+1)*feature_n, :] = z
+    a = cdist(whole_latent, clean_latent, metric='euclidean')
+    a = np.apply_along_axis(np.sort, axis=1, arr=a)[:,0:k]
+    a = np.apply_along_axis(f, axis=1, arr=a)
+    lid_features = a.reshape(len(images), feature_n)
+    return lid_features
+
+

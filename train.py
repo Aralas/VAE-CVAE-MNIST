@@ -9,13 +9,15 @@ from torchvision import transforms
 from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader
 from collections import defaultdict
-
+from utils import add_noise, get_lid
 from models import VAE
+import numpy as np
 
 
 def main(args):
 
     torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(args.seed)
 
@@ -29,7 +31,13 @@ def main(args):
         download=True)
     data_loader = DataLoader(
         dataset=dataset, batch_size=args.batch_size, shuffle=True)
-
+    clean_index = np.random.choice(len(dataset), int(len(dataset)*args.clean_ratio), replace=False)
+    noise_index = add_noise(data_loader, clean_index, args.noise_level, args.noise_sigma, args.clean_ratio, args.seed)
+    data_track_loader = DataLoader(
+        dataset=dataset, batch_size=args.batch_size, shuffle=False)
+    data_track_loader.sampler.data_source.train_data = data_loader.sampler.data_source.train_data
+    
+    
     def loss_fn(recon_x, x, mean, log_var):
         BCE = torch.nn.functional.binary_cross_entropy(
             recon_x.view(-1, 28*28), x.view(-1, 28*28), reduction='sum')
@@ -93,16 +101,17 @@ def main(args):
                         plt.text(
                             0, 0, "c={:d}".format(c[p].item()), color='black',
                             backgroundcolor='white', fontsize=8)
-                    plt.imshow(x[p].view(28, 28).data.numpy())
+                    plt.imshow(x[p].view(28, 28).data.cpu().numpy())
                     plt.axis('off')
-
-                if not os.path.exists(os.path.join(args.fig_root, str(ts))):
+                
+                fig_path = os.path.join(args.fig_root, 'noise_%.2f_sigma_%.1f_n_%d'%(args.noise_level, args.noise_sigma, args.latent_size))
+                if not os.path.exists(fig_path):
                     if not(os.path.exists(os.path.join(args.fig_root))):
                         os.mkdir(os.path.join(args.fig_root))
-                    os.mkdir(os.path.join(args.fig_root, str(ts)))
+                    os.mkdir(fig_path)
 
                 plt.savefig(
-                    os.path.join(args.fig_root, str(ts),
+                    os.path.join(fig_path,
                                  "E{:d}I{:d}.png".format(epoch, iteration)),
                     dpi=300)
                 plt.clf()
@@ -113,15 +122,27 @@ def main(args):
             x='x', y='y', hue='label', data=df.groupby('label').head(200),
             fit_reg=False, legend=True)
         g.savefig(os.path.join(
-            args.fig_root, str(ts), "E{:d}-Dist.png".format(epoch)),
+            fig_path, "E{:d}-Dist.png".format(epoch)),
             dpi=300)
+        
+        lid_features = get_lid(data_track_loader, clean_index, vae, args.latent_size, args.seed)
+        df = pd.DataFrame(lid_features)
+        df.columns = [str(i) for i in range(10)]
+        df['clean'] = [i in clean_index for i in range(len(lid_features))]
+        df['add_noise'] = list(noise_index)
+        file_path = 'record/noise_%.2f_sigma_%.1f_n_%d'%(args.noise_level, args.noise_sigma, args.latent_size)
+        if not os.path.exists(file_path):
+            os.mkdir(file_path)
+        df.to_excel(file_path+'/epoch%d.csv'%epoch, index=True)
 
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--noise_level", type=float, default=0.3)
+    parser.add_argument("--seed", type=int, default=0)    
+    parser.add_argument("--clean_ratio", type=float, default=0.05)
+    parser.add_argument("--noise_level", type=float, default=0.5)
+    parser.add_argument("--noise_sigma", type=float, default=10)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--learning_rate", type=float, default=0.001)
