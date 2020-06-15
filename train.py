@@ -106,9 +106,7 @@ def main(args):
                 
                 fig_path = os.path.join(args.fig_root, 'noise_%.2f_sigma_%.1f_n_%d'%(args.noise_level, args.noise_sigma, args.latent_size))
                 if not os.path.exists(fig_path):
-                    if not(os.path.exists(os.path.join(args.fig_root))):
-                        os.mkdir(os.path.join(args.fig_root))
-                    os.mkdir(fig_path)
+                    os.makedirs(fig_path)
 
                 plt.savefig(
                     os.path.join(fig_path,
@@ -127,13 +125,13 @@ def main(args):
         
         lid_features = get_lid(data_track_loader, clean_index, vae, args.latent_size, args.seed)
         df = pd.DataFrame(lid_features)
-        df.columns = [str(i) for i in range(10)]
+        df.columns = [str(i) for i in range(10)] + ['mean %d'%i for i in range(args.latent_size)] + ['std %d'%i for i in range(args.latent_size)]
         df['clean'] = [i in clean_index for i in range(len(lid_features))]
-        df['add_noise'] = list(noise_index)
+        df['add_noise'] = list(noise_index.detach().cpu().numpy())
         file_path = 'record/noise_%.2f_sigma_%.1f_n_%d'%(args.noise_level, args.noise_sigma, args.latent_size)
         if not os.path.exists(file_path):
-            os.mkdir(file_path)
-        df.to_excel(file_path+'/epoch%d.csv'%epoch, index=True)
+            os.makedirs(file_path)
+        df.to_csv(file_path+'/epoch%d.csv'%epoch, index=True)
 
 
 if __name__ == '__main__':

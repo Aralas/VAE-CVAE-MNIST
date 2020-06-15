@@ -45,6 +45,8 @@ def get_lid(loader, clean_index, vae, latent_size, seed):
     clean_latent = np.zeros((len(clean_index)*clean_latent_n, latent_size))
     whole_latent = np.zeros((len(images)*feature_n, latent_size))
     lid_features = np.zeros((len(images), feature_n))
+    mean_list = np.zeros((len(images), latent_size))
+    std_list = np.zeros((len(images), latent_size))
     
     for n, index in enumerate(clean_index):
         means, log_var = vae.encoder(images[index].flatten().float().to(device))
@@ -53,17 +55,21 @@ def get_lid(loader, clean_index, vae, latent_size, seed):
         z = eps * std + means.detach().cpu().numpy()
         clean_latent[n*clean_latent_n:(n+1)*clean_latent_n, :] = z
     
-    f = lambda v: - k / np.sum(np.log(max(v, 1e-6)/v[-1]))
+    f = lambda v: - k / np.sum(np.log(v/v[-1]))
     for n, image_i in enumerate(images):
         means, log_var = vae.encoder(image_i.flatten().float().to(device))
         std = torch.exp(0.5 * log_var).detach().cpu().numpy()        
         eps = torch.randn([feature_n, latent_size]).detach().cpu().numpy()
         z = eps * std + means.detach().cpu().numpy()
         whole_latent[n*feature_n:(n+1)*feature_n, :] = z
+        mean_list[n, :] = means.detach().cpu().numpy()
+        std_list[n, :] = std
     a = cdist(whole_latent, clean_latent, metric='euclidean')
     a = np.apply_along_axis(np.sort, axis=1, arr=a)[:,0:k]
+    a = np.maximum(a, 1e-6)
     a = np.apply_along_axis(f, axis=1, arr=a)
     lid_features = a.reshape(len(images), feature_n)
+    lid_features = np.hstack((lid_features, mean_list, std_list))
     return lid_features
 
 
