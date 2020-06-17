@@ -22,7 +22,7 @@ def main(args):
         torch.cuda.manual_seed(args.seed)
 
     device = torch.device("cuda")
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
     ts = time.time()
     if args.dataset == "MNIST":
@@ -153,7 +153,7 @@ if __name__ == '__main__':
     
     for noise in [0.1, 0.3, 0.5, 0.7, 0.9]:
         for sigma in [5, 10, 20, 50]:
-            for n in [2]:  
+            for n in [10]:  
                 args.noise_level = noise
                 args.noise_sigma = sigma
                 args.latent_size = n
