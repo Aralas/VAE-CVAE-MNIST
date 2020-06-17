@@ -13,21 +13,21 @@ def idx2onehot(idx, n):
 
     return onehot
 
-def add_noise(loader, clean_index, noise_level, noise_sigma, clean_ratio, seed):
+def add_noise(loader, clean_index, noise_level, noise_sigma, seed):
     
     torch.manual_seed(seed)
     np.random.seed(seed)
     
-    images = [sample_i for sample_i in loader.sampler.data_source.train_data]
+    images = [sample_i for sample_i in loader.sampler.data_source.data]
     probs_to_change = torch.rand((len(images),))
     idx_to_change = probs_to_change >= (1 - noise_level)
-    n_rows, n_cols = images[0].shape
+
     for n, image_i in enumerate(images):
         if idx_to_change[n] == 1 and n not in clean_index:
-            noise = torch.randn((n_rows, n_cols), out=None) * noise_sigma           
-            images[n] += noise.byte()
+            noise = np.random.randn(*images[0].shape) * noise_sigma
+            images[n] += noise.astype(np.uint8)
 
-    loader.sampler.data_source.train_data = images
+    loader.sampler.data_source.data = images
     return idx_to_change
 
     
@@ -41,7 +41,7 @@ def get_lid(loader, clean_index, vae, latent_size, seed):
     clean_latent_n = 5
     feature_n = 10
     
-    images = [sample_i for sample_i in loader.sampler.data_source.train_data]
+    images = [sample_i for sample_i in loader.sampler.data_source.data]
     clean_latent = np.zeros((len(clean_index)*clean_latent_n, latent_size))
     whole_latent = np.zeros((len(images)*feature_n, latent_size))
     lid_features = np.zeros((len(images), feature_n))
@@ -49,7 +49,9 @@ def get_lid(loader, clean_index, vae, latent_size, seed):
     std_list = np.zeros((len(images), latent_size))
     
     for n, index in enumerate(clean_index):
-        means, log_var = vae.encoder(images[index].flatten().float().to(device))
+        image_i = images[index][np.newaxis, :]
+        image_i = image_i.transpose(0,3,1,2)
+        means, log_var = vae.encoder(torch.from_numpy(image_i).to(device).float())
         std = torch.exp(0.5 * log_var).detach().cpu().numpy()                
         eps = torch.randn([clean_latent_n, latent_size]).detach().cpu().numpy()
         z = eps * std + means.detach().cpu().numpy()
@@ -57,7 +59,9 @@ def get_lid(loader, clean_index, vae, latent_size, seed):
     
     f = lambda v: - k / np.sum(np.log(v/v[-1]))
     for n, image_i in enumerate(images):
-        means, log_var = vae.encoder(image_i.flatten().float().to(device))
+        image_i = image_i[np.newaxis, :]
+        image_i = image_i.transpose(0,3,1,2)
+        means, log_var = vae.encoder(torch.from_numpy(image_i).to(device).float())
         std = torch.exp(0.5 * log_var).detach().cpu().numpy()        
         eps = torch.randn([feature_n, latent_size]).detach().cpu().numpy()
         z = eps * std + means.detach().cpu().numpy()
