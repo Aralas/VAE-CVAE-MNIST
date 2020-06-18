@@ -21,10 +21,6 @@ def main(args):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(args.seed)
 
-    device = torch.device("cuda")
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
-
     ts = time.time()
     if args.dataset == "MNIST":
         dataset = MNIST(
@@ -176,12 +172,16 @@ if __name__ == '__main__':
     parser.add_argument("--conditional", action='store_true')
 
     args = parser.parse_args()
-
-    for noise in [0.5]:
-        for sigma in [5]:
-            for n in [2]:
+    
+    device = torch.device("cuda")
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    
+    for noise in [0.7]:
+        for sigma in [5, 10, 20, 50]:
+            for n in [2, 5, 10]:
                 args.noise_level = noise
                 args.noise_sigma = sigma
                 args.latent_size = n
                 args.dataset = "CIFAR10"
+                args.epochs = 20
                 main(args)

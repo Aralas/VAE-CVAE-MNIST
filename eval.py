@@ -127,3 +127,12 @@ for noise_level in [0.1, 0.3, 0.5, 0.7, 0.9]:
                 eval_LID(dataset, noise_level, noise_sigma, latent_size)
             except:
                 pass
+            
+for noise_level in [0.1, 0.3, 0.5, 0.7, 0.9]:
+    for noise_sigma in [5, 10, 20, 50]:
+        for latent_size in [2, 5, 10]:
+            dataset = "CIFAR10"
+            try:                
+                eval_LID(dataset, noise_level, noise_sigma, latent_size)
+            except:
+                pass
