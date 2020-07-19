@@ -21,10 +21,10 @@ def main(args):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(args.seed)
 
-    ts = time.time()
+    datapath = os.path.abspath('..') + 'data/LID'
     if args.dataset == "MNIST":
         dataset = MNIST(
-            root='data', train=True, transform=transforms.ToTensor(),
+            root=datapath+'/data', train=True, transform=transforms.ToTensor(),
             download=True)
         vae = VAE(
             encoder_layer_sizes=args.encoder_layer_sizes,
@@ -33,8 +33,12 @@ def main(args):
             conditional=args.conditional,
             num_labels=10 if args.conditional else 0).to(device)
     elif args.dataset == "CIFAR10":
+#         SetRange = transforms.Lambda(lambda X: 2 * X - 1.)
+        transform = transforms.Compose([transforms.RandomHorizontalFlip(),
+                            transforms.CenterCrop(148),
+                            transforms.ToTensor()])
         dataset = CIFAR10(
-            root='data', train=True, transform=transforms.ToTensor(),
+            root=datapath+'/data', train=True, transform=transforms.ToTensor(),
             download=True)
         vae = VAE_CNN(
             encoder_filter_sizes=args.encoder_filter_sizes,
@@ -50,8 +54,7 @@ def main(args):
     data_track_loader.sampler.data_source.data = data_loader.sampler.data_source.data
 
     def loss_fn(recon_x, x, mean, log_var):
-        BCE = torch.nn.functional.mse_loss(
-            recon_x, x, reduction='sum')
+        BCE = torch.nn.functional.mse_loss(recon_x, x, reduction='sum')        
         KLD = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
 
         return (BCE + KLD) / x.size(0)
@@ -67,7 +70,7 @@ def main(args):
         for iteration, (x, y) in enumerate(data_loader):
 
             x, y = x.to(device), y.to(device)
-
+            
             if args.conditional:
                 recon_x, mean, log_var, z = vae(x, y)
             else:
@@ -93,9 +96,9 @@ def main(args):
 
                 if args.conditional:
                     c = torch.arange(0, 10).long().unsqueeze(1)
-                    x = vae.inference(n=c.size(0), c=c)
+                    x_gen = vae.inference(n=c.size(0), c=c)
                 else:
-                    x = vae.inference(n=10)
+                    x_gen = vae.inference(n=10)
 
                 plt.figure()
                 plt.figure(figsize=(5, 10))
@@ -106,28 +109,39 @@ def main(args):
                             0, 0, "c={:d}".format(c[p].item()), color='black',
                             backgroundcolor='white', fontsize=8)
                     if args.dataset == "MNIST":
-                        plt.imshow(x[p].view(28, 28).data.cpu().numpy())
+                        plt.imshow(x_gen[p].view(28, 28).data.cpu().numpy())
                     elif args.dataset == "CIFAR10":
-                        imr = Image.fromarray(x[p, 0, :, :].data.cpu().numpy()).convert('L')
-                        imb = Image.fromarray(x[p, 1, :, :].data.cpu().numpy()).convert('L')
-                        img = Image.fromarray(x[p, 2, :, :].data.cpu().numpy()).convert('L')
-
-                        # merge
-                        merged = Image.merge("RGB", (imr, img, imb))
-                        plt.imshow(merged)
-                        # rgb = np.dstack((x[p, 0, :, :],x[p, 1, :, :],x[p, 2, :, :]))
-                        # plt.imshow(x[p].view(3, 32, 32).data.cpu().numpy())
+                        image = x_gen[p]
+                        img1 = transforms.ToPILImage()(image.view(3, 32, 32).float().cpu())
+                        
+                        plt.imshow(img1)
+                        
                     plt.axis('off')
 
-                fig_path = os.path.join(args.fig_root, '%s/noise_%.2f_sigma_%.1f_n_%d' % (
+                fig_path = os.path.join(datapath, args.fig_root, '%s/noise_%.2f_sigma_%.1f_n_%d' % (
                 args.dataset, args.noise_level, args.noise_sigma, args.latent_size))
                 if not os.path.exists(fig_path):
                     os.makedirs(fig_path)
 
-                plt.savefig(
-                    os.path.join(fig_path,
-                                 "E{:d}I{:d}.png".format(epoch, iteration)),
-                    dpi=300)
+                plt.savefig(os.path.join(fig_path,"E{:d}I{:d}.png".format(epoch, iteration)),dpi=300)
+                
+                if args.dataset == "CIFAR10":
+                    plt.figure()
+                    plt.figure(figsize=(5, 10))
+                    for p in range(5):
+                        plt.subplot(5, 2, 2*p+1)                   
+                        image = x[p]
+                        print(image.size())
+                        img1 = transforms.ToPILImage()(image.view(3, 32, 32).float().cpu())                        
+                        plt.imshow(img1)
+                        plt.subplot(5, 2, 2*p+2)   
+                        image = recon_x[p]
+                        print(image.size())
+                        img1 = transforms.ToPILImage()(image.view(3, 32, 32).float().cpu())                        
+                        plt.imshow(img1)                        
+                    plt.axis('off')
+                    plt.savefig(os.path.join(fig_path,"E{:d}I{:d}_recon.png".format(epoch, iteration)),dpi=300)
+
                 plt.clf()
                 plt.close('all')
 
@@ -139,18 +153,17 @@ def main(args):
                     fig_path, "E{:d}-Dist.png".format(epoch)),
                     dpi=300)
 
-        lid_features = get_lid(data_track_loader, clean_index, vae, args.latent_size, args.seed)
-        df = pd.DataFrame(lid_features)
-        df.columns = [str(i) for i in range(10)] + ['mean %d' % i for i in range(args.latent_size)] + ['std %d' % i for
-                                                                                                       i in range(
-                args.latent_size)]
-        df['clean'] = [i in clean_index for i in range(len(lid_features))]
-        df['add_noise'] = list(noise_index.detach().cpu().numpy())
-        file_path = 'record/%s/noise_%.2f_sigma_%.1f_n_%d' % (
-            args.dataset, args.noise_level, args.noise_sigma, args.latent_size)
-        if not os.path.exists(file_path):
-            os.makedirs(file_path)
-        df.to_csv(file_path + '/epoch%d.csv' % epoch, index=True)
+        if epoch % 100 == 99:
+            lid_features = get_lid(data_track_loader, clean_index, vae, args.latent_size, args.seed)
+            df = pd.DataFrame(lid_features)
+            df.columns = [str(i) for i in range(10)] + ['mean %d' % i for i in range(args.latent_size)] + ['std %d' % i for i in range(args.latent_size)]
+            df['clean'] = [i in clean_index for i in range(len(lid_features))]
+            df['add_noise'] = list(noise_index.detach().cpu().numpy())
+            file_path = datapath+'/result/%s/noise_%.2f_sigma_%.1f_n_%d' % (
+                args.dataset, args.noise_level, args.noise_sigma, args.latent_size)
+            if not os.path.exists(file_path):
+                os.makedirs(file_path)
+            df.to_csv(file_path + '/epoch%d.csv' % epoch, index=True)
 
 
 if __name__ == '__main__':
@@ -174,14 +187,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     device = torch.device("cuda")
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
     
-    for noise in [0.7]:
-        for sigma in [5, 10, 20, 50]:
-            for n in [2, 5, 10]:
+    for noise in [0]:
+        for sigma in [0]:
+            for n in [64]:
                 args.noise_level = noise
                 args.noise_sigma = sigma
                 args.latent_size = n
                 args.dataset = "CIFAR10"
-                args.epochs = 20
+                args.epochs = 600
                 main(args)

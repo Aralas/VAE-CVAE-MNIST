@@ -27,7 +27,7 @@ def add_noise(loader, clean_index, noise_level, noise_sigma, seed):
             noise = np.random.randn(*images[0].shape) * noise_sigma
             images[n] += noise.astype(np.uint8)
 
-    loader.sampler.data_source.data = images
+    loader.sampler.data_source.data = np.clip(images, 0, 255)
     return idx_to_change
 
     

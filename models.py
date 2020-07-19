@@ -227,11 +227,11 @@ class Decoder_CNN(nn.Module):
                 name="CT{:d}".format(i), module=nn.ConvTranspose2d(in_size, out_size, kernel_size=3, stride=2,
                 padding=1, output_padding=1))
             self.MLP.add_module(name="N{:d}".format(i), module=nn.BatchNorm2d(out_size))
-            self.MLP.add_module(name="A{:d}".format(i), module=nn.LeakyReLU())
+            self.MLP.add_module(name="A{:d}".format(i), module=nn.ReLU())
 
         self.MLP.add_module(
             name="C{:d}".format(0), module=nn.Conv2d(out_size, out_channels=out_channels, kernel_size=3, padding=1))
-        self.MLP.add_module(name="A{:d}".format(i), module=nn.LeakyReLU())
+        self.MLP.add_module(name="A{:d}".format(i), module=nn.Sigmoid())
 
     def forward(self, z, c):
 
